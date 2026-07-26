@@ -1,0 +1,19 @@
+{
+  "name": "collaborative-kanban-board",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "start": "turbo run start"
+  },
+  "devDependencies": {
+    "turbo": "^2.10.7",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}
