@@ -1,31 +1,42 @@
 import { Board } from "@/components/Board";
 import { createClient } from "@/utils/supabase/server";
-import type { CardRow } from "@/types/database";
+import type { CardRow, ProfileRow } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-async function getCards(): Promise<CardRow[]> {
+async function getBoardData(): Promise<{
+  cards: CardRow[];
+  profiles: ProfileRow[];
+}> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("cards")
-      .select("*")
-      .order("status")
-      .order("position");
+    const [cardsResult, profilesResult] = await Promise.all([
+      supabase
+        .from("cards")
+        .select("*")
+        .order("status")
+        .order("position"),
+      supabase.from("profiles").select("*").order("full_name"),
+    ]);
 
-    if (error) {
-      console.error(error.message);
-      return [];
+    if (cardsResult.error) {
+      console.error(cardsResult.error.message);
+    }
+    if (profilesResult.error) {
+      console.error(profilesResult.error.message);
     }
 
-    return data ?? [];
+    return {
+      cards: cardsResult.data ?? [],
+      profiles: profilesResult.data ?? [],
+    };
   } catch (error) {
     console.error(error);
-    return [];
+    return { cards: [], profiles: [] };
   }
 }
 
 export default async function HomePage() {
-  const cards = await getCards();
-  return <Board initialCards={cards} />;
+  const { cards, profiles } = await getBoardData();
+  return <Board initialCards={cards} initialProfiles={profiles} />;
 }

@@ -17,16 +17,20 @@ import {
   groupCardsByStatus,
 } from "@/lib/board";
 import {
+  assignCard as assignCardAction,
   createCard as createCardAction,
   deleteCard as deleteCardAction,
   fetchCards,
   moveCard as moveCardAction,
+  setCardPriority as setCardPriorityAction,
   updateCard as updateCardAction,
 } from "@/actions/cards";
 import type {
+  AssignCardInput,
   ConnectionState,
   CreateCardInput,
   MoveCardInput,
+  SetPriorityInput,
   UpdateCardInput,
 } from "@/types/board";
 import type { CardRow } from "@/types/database";
@@ -54,7 +58,9 @@ function isCardRow(value: unknown): value is CardRow {
     typeof row.title === "string" &&
     typeof row.description === "string" &&
     typeof row.status === "string" &&
-    typeof row.position === "number"
+    typeof row.position === "number" &&
+    typeof row.ticket_number === "number" &&
+    typeof row.priority === "string"
   );
 }
 
@@ -141,6 +147,10 @@ export function useRealtimeBoard({ initialCards }: { initialCards: CardRow[] }) 
           description: (input.description ?? "").trim(),
           status: input.status,
           position: cardsByStatus[input.status].length,
+          ticket_number: 0,
+          priority: input.priority ?? "medium",
+          reporter_id: null,
+          assignee_id: input.assigneeId ?? null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
@@ -184,6 +194,74 @@ export function useRealtimeBoard({ initialCards }: { initialCards: CardRow[] }) 
       }
 
       const result = await updateCardAction(input);
+      if (!result.ok) {
+        setCardsMap(snapshot);
+        return result;
+      }
+
+      setCardsMap((prev) => {
+        const next = new Map(prev);
+        next.set(result.data.id, result.data);
+        return next;
+      });
+
+      return result;
+    },
+    [cardsMap],
+  );
+
+  const assignCard = useCallback(
+    async (input: AssignCardInput) => {
+      const snapshot = new Map(cardsMap);
+      const existing = cardsMap.get(input.id);
+
+      if (existing) {
+        setCardsMap((prev) => {
+          const next = new Map(prev);
+          next.set(input.id, {
+            ...existing,
+            assignee_id: input.assigneeId,
+            updated_at: new Date().toISOString(),
+          });
+          return next;
+        });
+      }
+
+      const result = await assignCardAction(input);
+      if (!result.ok) {
+        setCardsMap(snapshot);
+        return result;
+      }
+
+      setCardsMap((prev) => {
+        const next = new Map(prev);
+        next.set(result.data.id, result.data);
+        return next;
+      });
+
+      return result;
+    },
+    [cardsMap],
+  );
+
+  const setPriority = useCallback(
+    async (input: SetPriorityInput) => {
+      const snapshot = new Map(cardsMap);
+      const existing = cardsMap.get(input.id);
+
+      if (existing) {
+        setCardsMap((prev) => {
+          const next = new Map(prev);
+          next.set(input.id, {
+            ...existing,
+            priority: input.priority,
+            updated_at: new Date().toISOString(),
+          });
+          return next;
+        });
+      }
+
+      const result = await setCardPriorityAction(input);
       if (!result.ok) {
         setCardsMap(snapshot);
         return result;
@@ -262,10 +340,13 @@ export function useRealtimeBoard({ initialCards }: { initialCards: CardRow[] }) 
   const getCard = useCallback((id: string) => cardsMap.get(id), [cardsMap]);
 
   return {
+    cards,
     cardsByStatus,
     connectionState,
     createCard,
     updateCard,
+    assignCard,
+    setPriority,
     deleteCard,
     moveCard,
     getCard,

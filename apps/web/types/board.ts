@@ -1,6 +1,15 @@
-import type { CardRow, CardStatus } from "@/types/database";
+import type { CardPriority, CardRow, CardStatus } from "@/types/database";
 
-export type { CardStatus };
+export type { CardPriority, CardStatus };
+
+export const CARD_PRIORITIES: readonly {
+  id: CardPriority;
+  title: string;
+}[] = [
+  { id: "high", title: "High" },
+  { id: "medium", title: "Medium" },
+  { id: "low", title: "Low" },
+] as const;
 
 export type BoardColumnId = CardStatus;
 
@@ -17,6 +26,8 @@ export const BOARD_COLUMNS: readonly BoardColumn[] = [
 
 export type ConnectionState = "live" | "reconnecting" | "offline";
 
+export type BoardFilter = "all" | "mine";
+
 export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
@@ -25,12 +36,24 @@ export type CreateCardInput = {
   title: string;
   description?: string;
   status: CardStatus;
+  priority?: CardPriority;
+  assigneeId?: string | null;
 };
 
 export type UpdateCardInput = {
   id: string;
   title: string;
   description: string;
+};
+
+export type AssignCardInput = {
+  id: string;
+  assigneeId: string | null;
+};
+
+export type SetPriorityInput = {
+  id: string;
+  priority: CardPriority;
 };
 
 export type MoveCardInput = {

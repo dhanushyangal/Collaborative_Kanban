@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useUser } from "@clerk/nextjs";
 import {
   DndContext,
   DragOverlay,
@@ -14,21 +15,27 @@ import {
   type DragStartEvent,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
-import {
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
-import { BOARD_COLUMNS } from "@/types/board";
-import type { CardRow, CardStatus } from "@/types/database";
+import { BOARD_COLUMNS, type BoardFilter } from "@/types/board";
+import type {
+  CardPriority,
+  CardRow,
+  CardStatus,
+  ProfileRow,
+} from "@/types/database";
 import { isCardStatus } from "@/lib/validation";
+import { groupCardsByStatus } from "@/lib/board";
 import { useRealtimeBoard } from "@/hooks/useRealtimeBoard";
 import { usePresence } from "@/hooks/usePresence";
+import { useProfiles } from "@/hooks/useProfiles";
 import { useBoardShortcuts } from "@/hooks/useBoardShortcuts";
 import { Column } from "@/components/Column";
 import { CardPreview } from "@/components/Card";
 import { CardModal } from "@/components/CardModal";
-import { CardDetails } from "@/components/CardDetails";
+import { TicketDialog } from "@/components/TicketDialog";
 import { AppHeader } from "@/components/AppHeader";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +49,7 @@ import {
 
 type BoardProps = {
   initialCards: CardRow[];
+  initialProfiles: ProfileRow[];
 };
 
 function subscribeToNothing() {
@@ -69,20 +77,26 @@ function findContainer(
   return null;
 }
 
-export function Board({ initialCards }: BoardProps) {
+export function Board({ initialCards, initialProfiles }: BoardProps) {
+  const { user } = useUser();
   const {
-    cardsByStatus,
+    cards,
+    cardsByStatus: allCardsByStatus,
     connectionState,
     createCard,
     updateCard,
+    assignCard,
+    setPriority,
     deleteCard,
     moveCard,
     getCard,
   } = useRealtimeBoard({ initialCards });
 
   const { onlineCount } = usePresence();
+  const { profiles, getProfile } = useProfiles(initialProfiles);
   const hasMounted = useHasMounted();
 
+  const [filter, setFilter] = useState<BoardFilter>("all");
   const [createStatus, setCreateStatus] = useState<CardStatus | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -90,6 +104,20 @@ export function Board({ initialCards }: BoardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+
+  const currentUserId = user?.id;
+
+  const visibleCards = useMemo(() => {
+    if (filter !== "mine" || !currentUserId) {
+      return cards;
+    }
+    return cards.filter((card) => card.assignee_id === currentUserId);
+  }, [cards, currentUserId, filter]);
+
+  const cardsByStatus = useMemo(
+    () => groupCardsByStatus(visibleCards),
+    [visibleCards],
+  );
 
   const selectedCard = selectedCardId ? getCard(selectedCardId) ?? null : null;
   const pendingDeleteCard = pendingDeleteId
@@ -119,16 +147,16 @@ export function Board({ initialCards }: BoardProps) {
       title: string;
       description: string;
       status: CardStatus;
+      priority?: CardPriority;
+      assigneeId?: string | null;
     }) => {
       setIsCreating(true);
       const result = await createCard(input);
       setIsCreating(false);
-
       if (!result.ok) {
         toast.error(result.error);
         return false;
       }
-
       toast.success("Card created");
       return true;
     },
@@ -140,16 +168,66 @@ export function Board({ initialCards }: BoardProps) {
       setIsSaving(true);
       const result = await updateCard(input);
       setIsSaving(false);
-
       if (!result.ok) {
         toast.error(result.error);
         return false;
       }
-
-      toast.success("Card saved");
       return true;
     },
     [updateCard],
+  );
+
+  const handleAssign = useCallback(
+    async (input: { id: string; assigneeId: string | null }) => {
+      setIsSaving(true);
+      const result = await assignCard(input);
+      setIsSaving(false);
+      if (!result.ok) {
+        toast.error(result.error);
+        return false;
+      }
+      return true;
+    },
+    [assignCard],
+  );
+
+  const handleSetPriority = useCallback(
+    async (input: { id: string; priority: CardPriority }) => {
+      setIsSaving(true);
+      const result = await setPriority(input);
+      setIsSaving(false);
+      if (!result.ok) {
+        toast.error(result.error);
+        return false;
+      }
+      return true;
+    },
+    [setPriority],
+  );
+
+  const handleMoveStatus = useCallback(
+    async (input: { id: string; status: CardStatus }) => {
+      const card = getCard(input.id);
+      if (!card || card.status === input.status) return true;
+
+      const position = allCardsByStatus[input.status].filter(
+        (item) => item.id !== input.id,
+      ).length;
+
+      setIsSaving(true);
+      const result = await moveCard({
+        id: input.id,
+        status: input.status,
+        position,
+      });
+      setIsSaving(false);
+      if (!result.ok) {
+        toast.error(result.error);
+        return false;
+      }
+      return true;
+    },
+    [allCardsByStatus, getCard, moveCard],
   );
 
   const handleDelete = useCallback(
@@ -157,12 +235,10 @@ export function Board({ initialCards }: BoardProps) {
       setIsDeleting(true);
       const result = await deleteCard(id);
       setIsDeleting(false);
-
       if (!result.ok) {
         toast.error(result.error);
         return false;
       }
-
       toast.success("Card deleted");
       return true;
     },
@@ -200,8 +276,8 @@ export function Board({ initialCards }: BoardProps) {
         return;
       }
 
-      const activeContainer = findContainer(cardsByStatus, active.id);
-      const overContainer = findContainer(cardsByStatus, over.id);
+      const activeContainer = findContainer(allCardsByStatus, active.id);
+      const overContainer = findContainer(allCardsByStatus, over.id);
 
       if (!activeContainer || !overContainer) {
         return;
@@ -212,7 +288,7 @@ export function Board({ initialCards }: BoardProps) {
         return;
       }
 
-      const overCards = cardsByStatus[overContainer];
+      const overCards = allCardsByStatus[overContainer];
       let newIndex = overCards.findIndex((card) => card.id === over.id);
 
       if (isCardStatus(String(over.id))) {
@@ -238,7 +314,7 @@ export function Board({ initialCards }: BoardProps) {
         toast.error(result.error);
       }
     },
-    [cardsByStatus, getCard, moveCard],
+    [allCardsByStatus, getCard, moveCard],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -249,13 +325,11 @@ export function Board({ initialCards }: BoardProps) {
     () => ({
       onDragStart({ active }: DragStartEvent) {
         const card = getCard(String(active.id));
-        return card
-          ? `Picked up ${card.title}`
-          : "Picked up card";
+        return card ? `Picked up ${card.title}` : "Picked up card";
       },
       onDragOver({ active, over }: DragOverEvent) {
         const card = getCard(String(active.id));
-        const container = over ? findContainer(cardsByStatus, over.id) : null;
+        const container = over ? findContainer(allCardsByStatus, over.id) : null;
         if (!card || !container) {
           return;
         }
@@ -266,7 +340,7 @@ export function Board({ initialCards }: BoardProps) {
       },
       onDragEnd({ active, over }: DragEndEvent) {
         const card = getCard(String(active.id));
-        const container = over ? findContainer(cardsByStatus, over.id) : null;
+        const container = over ? findContainer(allCardsByStatus, over.id) : null;
         if (!card || !container) {
           return "Drag cancelled";
         }
@@ -282,7 +356,7 @@ export function Board({ initialCards }: BoardProps) {
           : "Dragging cancelled";
       },
     }),
-    [cardsByStatus, getCard],
+    [allCardsByStatus, getCard],
   );
 
   return (
@@ -291,6 +365,25 @@ export function Board({ initialCards }: BoardProps) {
         connectionState={connectionState}
         onlineCount={onlineCount}
       />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={filter === "all" ? "default" : "outline"}
+          onClick={() => setFilter("all")}
+        >
+          All tickets
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={filter === "mine" ? "default" : "outline"}
+          onClick={() => setFilter("mine")}
+        >
+          Assigned to me
+        </Button>
+      </div>
 
       {hasMounted ? (
         <DndContext
@@ -310,6 +403,7 @@ export function Board({ initialCards }: BoardProps) {
                 key={column.id}
                 column={column}
                 cards={cardsByStatus[column.id]}
+                getProfile={getProfile}
                 sortable
                 onAddCard={openCreate}
                 onOpenCard={setSelectedCardId}
@@ -317,9 +411,13 @@ export function Board({ initialCards }: BoardProps) {
               />
             ))}
           </div>
-
           <DragOverlay>
-            {activeCard ? <CardPreview card={activeCard} /> : null}
+            {activeCard ? (
+              <CardPreview
+                card={activeCard}
+                assignee={getProfile(activeCard.assignee_id)}
+              />
+            ) : null}
           </DragOverlay>
         </DndContext>
       ) : (
@@ -329,6 +427,7 @@ export function Board({ initialCards }: BoardProps) {
               key={column.id}
               column={column}
               cards={cardsByStatus[column.id]}
+              getProfile={getProfile}
               sortable={false}
               onAddCard={openCreate}
               onOpenCard={setSelectedCardId}
@@ -341,6 +440,7 @@ export function Board({ initialCards }: BoardProps) {
       <CardModal
         open={createStatus !== null}
         status={createStatus}
+        profiles={profiles}
         isSubmitting={isCreating}
         onOpenChange={(open) => {
           if (!open) {
@@ -350,17 +450,21 @@ export function Board({ initialCards }: BoardProps) {
         onCreate={handleCreate}
       />
 
-      <CardDetails
+      <TicketDialog
+        key={selectedCardId ?? "ticket-closed"}
         card={selectedCard}
-        open={selectedCardId !== null && selectedCard !== null}
+        open={selectedCard !== null}
+        profiles={profiles}
+        getProfile={getProfile}
         isSaving={isSaving}
         isDeleting={isDeleting}
         onOpenChange={(open) => {
-          if (!open) {
-            setSelectedCardId(null);
-          }
+          if (!open) setSelectedCardId(null);
         }}
         onSave={handleSave}
+        onAssign={handleAssign}
+        onSetPriority={handleSetPriority}
+        onMoveStatus={handleMoveStatus}
         onDelete={handleDelete}
       />
 

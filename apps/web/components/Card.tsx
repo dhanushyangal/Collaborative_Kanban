@@ -1,34 +1,39 @@
 "use client";
 
-import { memo } from "react";
+import { memo, type CSSProperties, type HTMLAttributes } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Trash2 } from "lucide-react";
-import type { CardRow } from "@/types/database";
+import type { CardRow, ProfileRow } from "@/types/database";
+import { priorityLabel, ticketKey } from "@/lib/ticket";
+import { UserAvatar } from "@/components/UserAvatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type CardProps = {
   card: CardRow;
+  assignee?: ProfileRow | null;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   sortable?: boolean;
-  isDraggingOverlay?: boolean;
 };
 
 type CardChromeProps = {
   card: CardRow;
+  assignee?: ProfileRow | null;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
-  dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>;
+  dragHandleProps?: HTMLAttributes<HTMLButtonElement>;
   articleRef?: (node: HTMLElement | null) => void;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   isDragging?: boolean;
   isDraggingOverlay?: boolean;
 };
 
 function CardChrome({
   card,
+  assignee,
   onOpen,
   onDelete,
   dragHandleProps,
@@ -64,6 +69,25 @@ function CardChrome({
           className="min-w-0 flex-1 text-left"
           onClick={() => onOpen(card.id)}
         >
+          <div className="mb-1 flex items-center gap-2">
+            <p className="font-mono text-[10px] tracking-wide text-muted-foreground">
+              {ticketKey(card.ticket_number)}
+            </p>
+            <Badge
+              variant="secondary"
+              className={cn(
+                "rounded-full px-1.5 py-0 text-[10px]",
+                card.priority === "high" &&
+                  "bg-rose-500/15 text-rose-600 dark:text-rose-300",
+                card.priority === "medium" &&
+                  "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+                card.priority === "low" &&
+                  "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+              )}
+            >
+              {priorityLabel(card.priority)}
+            </Badge>
+          </div>
           <h3 className="line-clamp-2 text-sm font-semibold leading-5">
             {card.title}
           </h3>
@@ -72,6 +96,14 @@ function CardChrome({
               {card.description}
             </p>
           ) : null}
+          <div className="mt-2 flex items-center gap-2">
+            <UserAvatar profile={assignee} />
+            <span className="truncate text-[11px] text-muted-foreground">
+              {assignee
+                ? assignee.full_name || assignee.email
+                : "Unassigned"}
+            </span>
+          </div>
         </button>
 
         <Button
@@ -94,10 +126,10 @@ function CardChrome({
 
 const SortableCard = memo(function SortableCard({
   card,
+  assignee,
   onOpen,
   onDelete,
-  isDraggingOverlay = false,
-}: Omit<CardProps, "sortable">) {
+}: Omit<CardProps, "sortable" | "isDraggingOverlay">) {
   const {
     attributes,
     listeners,
@@ -111,46 +143,39 @@ const SortableCard = memo(function SortableCard({
       type: "card",
       card,
     },
-    disabled: isDraggingOverlay,
   });
-
-  const style = isDraggingOverlay
-    ? undefined
-    : {
-        transform: CSS.Transform.toString(transform),
-        transition,
-      };
 
   return (
     <CardChrome
       card={card}
+      assignee={assignee}
       onOpen={onOpen}
       onDelete={onDelete}
-      articleRef={isDraggingOverlay ? undefined : setNodeRef}
-      style={style}
+      articleRef={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
       isDragging={isDragging}
-      isDraggingOverlay={isDraggingOverlay}
-      dragHandleProps={
-        isDraggingOverlay ? undefined : { ...attributes, ...listeners }
-      }
+      dragHandleProps={{ ...attributes, ...listeners }}
     />
   );
 });
 
 export const Card = memo(function Card({
   card,
+  assignee,
   onOpen,
   onDelete,
   sortable = true,
-  isDraggingOverlay = false,
 }: CardProps) {
-  if (!sortable || isDraggingOverlay) {
+  if (!sortable) {
     return (
       <CardChrome
         card={card}
+        assignee={assignee}
         onOpen={onOpen}
         onDelete={onDelete}
-        isDraggingOverlay={isDraggingOverlay}
       />
     );
   }
@@ -158,17 +183,24 @@ export const Card = memo(function Card({
   return (
     <SortableCard
       card={card}
+      assignee={assignee}
       onOpen={onOpen}
       onDelete={onDelete}
-      isDraggingOverlay={isDraggingOverlay}
     />
   );
 });
 
-export function CardPreview({ card }: { card: CardRow }) {
+export function CardPreview({
+  card,
+  assignee,
+}: {
+  card: CardRow;
+  assignee?: ProfileRow | null;
+}) {
   return (
-    <Card
+    <CardChrome
       card={card}
+      assignee={assignee}
       onOpen={() => undefined}
       onDelete={() => undefined}
       isDraggingOverlay

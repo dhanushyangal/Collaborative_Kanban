@@ -1,70 +1,56 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useUser } from "@clerk/nextjs";
 import { createClient } from "@/utils/supabase/client";
 
 type PresenceUser = {
   id: string;
+  name: string;
   joinedAt: string;
-};
-
-type PresencePayload = {
-  [key: string]: PresenceUser[];
 };
 
 export function usePresence(room = "kanban-board") {
   const supabase = useMemo(() => createClient(), []);
+  const { user, isLoaded } = useUser();
   const [onlineCount, setOnlineCount] = useState(1);
-  const [userId] = useState(() => crypto.randomUUID());
+  const [fallbackId] = useState(() => crypto.randomUUID());
+
+  const presenceKey = user?.id ?? fallbackId;
+  const displayName =
+    user?.fullName?.trim() ||
+    user?.primaryEmailAddress?.emailAddress ||
+    user?.username ||
+    "Anonymous";
 
   useEffect(() => {
-    let channel: RealtimeChannel | null = null;
+    if (!isLoaded) return;
 
-    const syncCount = (state: PresencePayload) => {
-      const ids = new Set(Object.keys(state));
-      setOnlineCount(Math.max(ids.size, 1));
-    };
-
-    channel = supabase.channel(`presence:${room}`, {
+    const channel = supabase.channel(`presence:${room}`, {
       config: {
-        presence: {
-          key: userId,
-        },
+        presence: { key: presenceKey },
       },
     });
 
     channel
       .on("presence", { event: "sync" }, () => {
-        const state = channel?.presenceState<PresenceUser>() ?? {};
-        syncCount(state as PresencePayload);
-      })
-      .on("presence", { event: "join" }, () => {
-        const state = channel?.presenceState<PresenceUser>() ?? {};
-        syncCount(state as PresencePayload);
-      })
-      .on("presence", { event: "leave" }, () => {
-        const state = channel?.presenceState<PresenceUser>() ?? {};
-        syncCount(state as PresencePayload);
+        const state = channel.presenceState<PresenceUser>();
+        setOnlineCount(Math.max(Object.keys(state).length, 1));
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await channel?.track({
-            id: userId,
+          await channel.track({
+            id: presenceKey,
+            name: displayName,
             joinedAt: new Date().toISOString(),
           } satisfies PresenceUser);
         }
       });
 
     return () => {
-      if (channel) {
-        void supabase.removeChannel(channel);
-      }
+      void supabase.removeChannel(channel);
     };
-  }, [room, supabase, userId]);
+  }, [displayName, isLoaded, presenceKey, room, supabase]);
 
-  return {
-    onlineCount,
-    userId,
-  };
+  return { onlineCount };
 }

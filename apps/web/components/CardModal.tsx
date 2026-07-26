@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type { CardStatus } from "@/types/database";
+import type { CardPriority, CardStatus, ProfileRow } from "@/types/database";
+import { CARD_PRIORITIES } from "@/types/board";
 import { validateCardFields } from "@/lib/validation";
 import { columnTitle } from "@/lib/board";
+import { profileLabel } from "@/lib/ticket";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,28 +22,35 @@ import { Textarea } from "@/components/ui/textarea";
 type CardModalProps = {
   open: boolean;
   status: CardStatus | null;
+  profiles: ProfileRow[];
   isSubmitting?: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (input: {
     title: string;
     description: string;
     status: CardStatus;
+    priority?: CardPriority;
+    assigneeId?: string | null;
   }) => Promise<boolean>;
 };
 
 function CardModalForm({
   status,
+  profiles,
   isSubmitting,
   onOpenChange,
   onCreate,
 }: {
   status: CardStatus;
+  profiles: ProfileRow[];
   isSubmitting: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: CardModalProps["onCreate"];
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState<CardPriority>("medium");
+  const [assigneeId, setAssigneeId] = useState("");
   const [titleError, setTitleError] = useState<string | undefined>();
 
   const handleSubmit = async () => {
@@ -55,6 +64,8 @@ function CardModalForm({
       title: validated.data.title,
       description: validated.data.description,
       status,
+      priority,
+      assigneeId: assigneeId || null,
     });
 
     if (ok) {
@@ -114,6 +125,41 @@ function CardModalForm({
             }}
           />
         </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="card-priority">Priority</Label>
+          <select
+            id="card-priority"
+            className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+            value={priority}
+            onChange={(event) =>
+              setPriority(event.target.value as CardPriority)
+            }
+          >
+            {CARD_PRIORITIES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="card-assignee">Assignee</Label>
+          <select
+            id="card-assignee"
+            className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+            value={assigneeId}
+            onChange={(event) => setAssigneeId(event.target.value)}
+          >
+            <option value="">Unassigned</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profileLabel(profile)} ({profile.email})
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <DialogFooter>
@@ -140,6 +186,7 @@ function CardModalForm({
 export function CardModal({
   open,
   status,
+  profiles,
   isSubmitting = false,
   onOpenChange,
   onCreate,
@@ -149,8 +196,9 @@ export function CardModal({
       <DialogContent className="sm:max-w-md">
         {status ? (
           <CardModalForm
-            key={`${status}-${String(open)}`}
+            key={status}
             status={status}
+            profiles={profiles}
             isSubmitting={isSubmitting}
             onOpenChange={onOpenChange}
             onCreate={onCreate}

@@ -7,7 +7,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
-import type { CardRow } from "@/types/database";
+import type { CardRow, ProfileRow } from "@/types/database";
 import type { BoardColumn } from "@/types/board";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 type ColumnProps = {
   column: BoardColumn;
   cards: CardRow[];
+  getProfile: (id: string | null | undefined) => ProfileRow | undefined;
   sortable?: boolean;
   onAddCard: (status: BoardColumn["id"]) => void;
   onOpenCard: (id: string) => void;
@@ -27,6 +28,7 @@ type ColumnProps = {
 function ColumnShell({
   column,
   cards,
+  getProfile,
   onAddCard,
   onOpenCard,
   onDeleteCard,
@@ -74,6 +76,7 @@ function ColumnShell({
             <ColumnCards
               cards={cards}
               columnTitle={column.title}
+              getProfile={getProfile}
               sortable
               onOpenCard={onOpenCard}
               onDeleteCard={onDeleteCard}
@@ -83,6 +86,7 @@ function ColumnShell({
           <ColumnCards
             cards={cards}
             columnTitle={column.title}
+            getProfile={getProfile}
             sortable={false}
             onOpenCard={onOpenCard}
             onDeleteCard={onDeleteCard}
@@ -96,12 +100,14 @@ function ColumnShell({
 function ColumnCards({
   cards,
   columnTitle,
+  getProfile,
   sortable,
   onOpenCard,
   onDeleteCard,
 }: {
   cards: CardRow[];
   columnTitle: string;
+  getProfile: (id: string | null | undefined) => ProfileRow | undefined;
   sortable: boolean;
   onOpenCard: (id: string) => void;
   onDeleteCard: (id: string) => void;
@@ -114,6 +120,7 @@ function ColumnCards({
     <Card
       key={card.id}
       card={card}
+      assignee={getProfile(card.assignee_id)}
       sortable={sortable}
       onOpen={onOpenCard}
       onDelete={onDeleteCard}

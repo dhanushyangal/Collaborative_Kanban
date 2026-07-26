@@ -25,7 +25,7 @@ export function AppHeader({ connectionState, onlineCount }: AppHeaderProps) {
           Collaborative Kanban
         </h1>
         <p className="text-sm text-muted-foreground">
-          Shared realtime board · shortcuts N / 1 / 2 / 3
+          Shortcuts: N / 1 / 2 / 3 to add a card
         </p>
       </div>
 
