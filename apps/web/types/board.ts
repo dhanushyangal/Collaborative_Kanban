@@ -49,6 +49,8 @@ export type UpdateCardInput = {
 export type AssignCardInput = {
   id: string;
   assigneeId: string | null;
+  /** Claim only if still unassigned — used by Assign to me (race-safe). */
+  onlyIfUnassigned?: boolean;
 };
 
 export type SetPriorityInput = {

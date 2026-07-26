@@ -248,6 +248,43 @@ export async function assignCard(
     if (!existing) return failure("Card not found");
     if (existing.assignee_id === input.assigneeId) return success(existing);
 
+    // Assign to me: only claim if still free (handles two people clicking at once).
+    if (input.onlyIfUnassigned) {
+      if (existing.assignee_id) {
+        const name = await getProfileName(existing.assignee_id);
+        return failure(`This issue has already been assigned to ${name}.`);
+      }
+
+      const { data, error } = await supabase
+        .from("cards")
+        .update({ assignee_id: input.assigneeId })
+        .eq("id", input.id)
+        .is("assignee_id", null)
+        .select()
+        .maybeSingle();
+
+      if (error) return failure(error.message);
+
+      if (!data) {
+        const { data: current } = await supabase
+          .from("cards")
+          .select("assignee_id")
+          .eq("id", input.id)
+          .maybeSingle();
+        const name = await getProfileName(current?.assignee_id ?? null);
+        return failure(`This issue has already been assigned to ${name}.`);
+      }
+
+      await recordHistory({
+        cardId: data.id,
+        actorId: profileResult.data.id,
+        eventType: "assignee_changed",
+        summary: `assigned to ${await getProfileName(input.assigneeId)}`,
+      });
+
+      return success(data);
+    }
+
     const { data, error } = await supabase
       .from("cards")
       .update({ assignee_id: input.assigneeId })

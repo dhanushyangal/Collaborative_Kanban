@@ -178,7 +178,11 @@ export function Board({ initialCards, initialProfiles }: BoardProps) {
   );
 
   const handleAssign = useCallback(
-    async (input: { id: string; assigneeId: string | null }) => {
+    async (input: {
+      id: string;
+      assigneeId: string | null;
+      onlyIfUnassigned?: boolean;
+    }) => {
       setIsSaving(true);
       const result = await assignCard(input);
       setIsSaving(false);

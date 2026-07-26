@@ -53,6 +53,7 @@ type TicketDialogProps = {
   onAssign: (input: {
     id: string;
     assigneeId: string | null;
+    onlyIfUnassigned?: boolean;
   }) => Promise<boolean>;
   onSetPriority: (input: {
     id: string;
@@ -144,9 +145,16 @@ export function TicketDialog({
     return ok;
   };
 
-  const setAssignee = async (assigneeId: string | null) => {
+  const setAssignee = async (
+    assigneeId: string | null,
+    options?: { onlyIfUnassigned?: boolean },
+  ) => {
     if (assigneeId === card.assignee_id) return;
-    await onAssign({ id: card.id, assigneeId });
+    await onAssign({
+      id: card.id,
+      assigneeId,
+      onlyIfUnassigned: options?.onlyIfUnassigned,
+    });
   };
 
   const handleComment = async () => {
@@ -454,13 +462,15 @@ export function TicketDialog({
                       No one is assigned yet
                     </p>
                   )}
-                  {user?.id && card.assignee_id !== user.id ? (
+                  {user?.id && !card.assignee_id ? (
                     <Button
                       type="button"
                       size="sm"
                       className="mt-2 w-full"
                       disabled={isSaving}
-                      onClick={() => void setAssignee(user.id)}
+                      onClick={() =>
+                        void setAssignee(user.id, { onlyIfUnassigned: true })
+                      }
                     >
                       Assign to me
                     </Button>
