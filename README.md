@@ -1,85 +1,111 @@
 # Collaborative Kanban
 
-Realtime Kanban board with Next.js, Clerk, Supabase, and @dnd-kit.
+A realtime collaborative Kanban board where authenticated users can create, edit, move, and delete cards. Changes are synchronized instantly across all connected users.
 
-Signed-in users share one board. Changes sync live. Cards are not owned by individual users.
+**Live Demo:** https://collaborative-kanban-web.vercel.app/
 
-## Stack
+## Tech Stack
 
-- Next.js 16 (App Router) + React 19 + TypeScript
-- Tailwind CSS v4 + shadcn/ui
-- Clerk (auth)
-- Supabase Postgres + Realtime + Presence
+- Next.js 16.2 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS v4
+- shadcn/ui
+- Clerk Authentication
+- Supabase (PostgreSQL, Realtime, Presence)
 - @dnd-kit
 - Turborepo + pnpm
+- Vercel
+
+## Features
+
+- Three-column Kanban board (To Do, In Progress, Done)
+- Create, edit, move, and delete cards
+- Drag and drop between columns
+- Realtime collaboration
+- Online user count and connection status
+- Data persisted in Supabase PostgreSQL
+- Clerk authentication
 
 ## Setup
 
-1. Install deps
+Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-2. Copy env file and fill in your keys
+Create your environment file:
 
 ```bash
 cp apps/web/.env.example apps/web/.env.local
 ```
 
-You need:
+Add:
 
-| Variable | Where to get it |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project settings |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase API keys |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk dashboard |
-| `CLERK_SECRET_KEY` | Clerk dashboard |
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+```
 
-3. Run the SQL migration in Supabase → SQL Editor:
+Run the SQL migration:
 
-`supabase/migrations/20260726120000_create_cards.sql`
+```
+supabase/migrations/20260726120000_create_cards.sql
+```
 
-4. Start the app
+Start the app:
 
 ```bash
 pnpm dev
 ```
-
-Open http://localhost:3000 — you'll be sent to sign-in.
 
 ## Scripts
 
 ```bash
 pnpm dev
+pnpm build
 pnpm lint
 pnpm check-types
-pnpm build
 ```
 
-## Structure
+## Project Structure
 
 ```
 apps/web/
-  app/                 # routes (board, sign-in, sign-up)
-  actions/             # server actions for cards
-  components/          # board UI
-  hooks/               # realtime + presence
-  lib/                 # helpers
-  utils/supabase/      # browser + server clients
-  middleware.ts        # Clerk route protection
-supabase/migrations/   # SQL
+├── app/
+├── actions/
+├── components/
+├── hooks/
+├── lib/
+├── utils/
+└── middleware.ts
+
+supabase/
+└── migrations/
 ```
 
-## Notes
+## Deployment
 
-- Auth only protects the app UI. The board itself is shared.
-- Realtime uses Supabase (`postgres_changes` + Presence), not Clerk.
-- Don't commit `.env` / `.env.local`.
+- Deploy to Vercel
+- Configure the environment variables
+- Add the Vercel URL to Clerk's allowed redirect URLs
 
-## Deploy (Vercel)
+## Thought Process
 
-- Root: repo root
-- Build: `pnpm turbo run build --filter=web`
-- Add the same env vars in the Vercel project
-- Add your Vercel URL in Clerk redirect settings
+I used Supabase as the single source of truth for storing cards and synchronizing updates in realtime. Clerk handles authentication and protects the application, while Next.js Server Actions manage database operations. The goal was to keep the architecture simple, maintainable, and responsive while meeting all assignment requirements.
+
+## Trade-offs
+
+- Used Clerk for authentication to simplify user management, adding one extra dependency.
+- Implemented a single shared board instead of supporting multiple boards to match the assignment scope.
+- Focused on reliable realtime synchronization instead of advanced collaborative editing features.
+
+## Future Improvements
+
+- Support multiple boards and workspaces.
+- Add role-based permissions.
+- Improve conflict handling for simultaneous edits.
+- Add offline support and automated end-to-end tests.
