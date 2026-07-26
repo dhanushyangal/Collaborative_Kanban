@@ -4,29 +4,28 @@ import type { CardRow } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-async function getInitialCards(): Promise<CardRow[]> {
+async function getCards(): Promise<CardRow[]> {
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("cards")
       .select("*")
-      .order("status", { ascending: true })
-      .order("position", { ascending: true });
+      .order("status")
+      .order("position");
 
     if (error) {
-      console.error("Failed to load cards:", error.message);
+      console.error(error.message);
       return [];
     }
 
     return data ?? [];
   } catch (error) {
-    console.error("Failed to load cards:", error);
+    console.error(error);
     return [];
   }
 }
 
 export default async function HomePage() {
-  const initialCards = await getInitialCards();
-
-  return <Board initialCards={initialCards} />;
+  const cards = await getCards();
+  return <Board initialCards={cards} />;
 }

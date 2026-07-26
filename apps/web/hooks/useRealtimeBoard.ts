@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/client";
 import {
   applyOptimisticMove,
@@ -22,43 +29,25 @@ import type {
   MoveCardInput,
   UpdateCardInput,
 } from "@/types/board";
-import type { CardRow, CardStatus } from "@/types/database";
-
-type UseRealtimeBoardOptions = {
-  initialCards: CardRow[];
-};
-
-function subscribeToOnline(onStoreChange: () => void) {
-  window.addEventListener("online", onStoreChange);
-  window.addEventListener("offline", onStoreChange);
-  return () => {
-    window.removeEventListener("online", onStoreChange);
-    window.removeEventListener("offline", onStoreChange);
-  };
-}
-
-function getOnlineSnapshot() {
-  return navigator.onLine;
-}
-
-function getOnlineServerSnapshot() {
-  // Assume online during SSR so server HTML matches the first client render.
-  return true;
-}
+import type { CardRow } from "@/types/database";
 
 function useIsOnline() {
   return useSyncExternalStore(
-    subscribeToOnline,
-    getOnlineSnapshot,
-    getOnlineServerSnapshot,
+    (onChange) => {
+      window.addEventListener("online", onChange);
+      window.addEventListener("offline", onChange);
+      return () => {
+        window.removeEventListener("online", onChange);
+        window.removeEventListener("offline", onChange);
+      };
+    },
+    () => navigator.onLine,
+    () => true,
   );
 }
 
 function isCardRow(value: unknown): value is CardRow {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
+  if (!value || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
   return (
     typeof row.id === "string" &&
@@ -69,27 +58,22 @@ function isCardRow(value: unknown): value is CardRow {
   );
 }
 
-export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
+export function useRealtimeBoard({ initialCards }: { initialCards: CardRow[] }) {
   const [cardsMap, setCardsMap] = useState(() => cardsToMap(initialCards));
   const [channelState, setChannelState] = useState<"live" | "reconnecting">(
     "reconnecting",
   );
   const isOnline = useIsOnline();
-  const connectionState: ConnectionState = !isOnline
-    ? "offline"
-    : channelState;
+  const connectionState: ConnectionState = !isOnline ? "offline" : channelState;
   const supabase = useMemo(() => createClient(), []);
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const wasSubscribedRef = useRef(false);
+  const hasConnected = useRef(false);
 
   const cards = useMemo(() => cardsFromMap(cardsMap), [cardsMap]);
   const cardsByStatus = useMemo(() => groupCardsByStatus(cards), [cards]);
 
   const refetch = useCallback(async () => {
     const result = await fetchCards();
-    if (result.ok) {
-      setCardsMap(cardsToMap(result.data));
-    }
+    if (result.ok) setCardsMap(cardsToMap(result.data));
   }, []);
 
   useEffect(() => {
@@ -99,8 +83,8 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
         "postgres_changes",
         { event: "*", schema: "public", table: "cards" },
         (payload: RealtimePostgresChangesPayload<CardRow>) => {
-          setCardsMap((previous) => {
-            const next = new Map(previous);
+          setCardsMap((prev) => {
+            const next = new Map(prev);
 
             if (payload.eventType === "INSERT" && isCardRow(payload.new)) {
               next.set(payload.new.id, payload.new);
@@ -113,25 +97,20 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
             }
 
             if (payload.eventType === "DELETE") {
-              const oldRow = payload.old as Partial<CardRow> | null;
-              if (oldRow?.id) {
-                next.delete(oldRow.id);
-              }
+              const old = payload.old as Partial<CardRow> | null;
+              if (old?.id) next.delete(old.id);
               return next;
             }
 
-            return previous;
+            return prev;
           });
         },
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           setChannelState("live");
-          // Refetch on every reconnect — Realtime does not replay missed events.
-          if (wasSubscribedRef.current) {
-            void refetch();
-          }
-          wasSubscribedRef.current = true;
+          if (hasConnected.current) void refetch();
+          hasConnected.current = true;
           return;
         }
 
@@ -144,11 +123,8 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
         }
       });
 
-    channelRef.current = channel;
-
     return () => {
       void supabase.removeChannel(channel);
-      channelRef.current = null;
     };
   }, [refetch, supabase]);
 
@@ -156,31 +132,29 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
     async (input: CreateCardInput) => {
       const tempId = `temp-${crypto.randomUUID()}`;
       const snapshot = new Map(cardsMap);
-      const optimistic: CardRow = {
-        id: tempId,
-        title: input.title.trim(),
-        description: (input.description ?? "").trim(),
-        status: input.status,
-        position: cardsByStatus[input.status].length,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
 
-      setCardsMap((previous) => {
-        const next = new Map(previous);
-        next.set(tempId, optimistic);
+      setCardsMap((prev) => {
+        const next = new Map(prev);
+        next.set(tempId, {
+          id: tempId,
+          title: input.title.trim(),
+          description: (input.description ?? "").trim(),
+          status: input.status,
+          position: cardsByStatus[input.status].length,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
         return next;
       });
 
       const result = await createCardAction(input);
-
       if (!result.ok) {
         setCardsMap(snapshot);
         return result;
       }
 
-      setCardsMap((previous) => {
-        const next = new Map(previous);
+      setCardsMap((prev) => {
+        const next = new Map(prev);
         next.delete(tempId);
         next.set(result.data.id, result.data);
         return next;
@@ -197,8 +171,8 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
       const existing = cardsMap.get(input.id);
 
       if (existing) {
-        setCardsMap((previous) => {
-          const next = new Map(previous);
+        setCardsMap((prev) => {
+          const next = new Map(prev);
           next.set(input.id, {
             ...existing,
             title: input.title.trim(),
@@ -210,14 +184,13 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
       }
 
       const result = await updateCardAction(input);
-
       if (!result.ok) {
         setCardsMap(snapshot);
         return result;
       }
 
-      setCardsMap((previous) => {
-        const next = new Map(previous);
+      setCardsMap((prev) => {
+        const next = new Map(prev);
         next.set(result.data.id, result.data);
         return next;
       });
@@ -233,8 +206,8 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
       const existing = cardsMap.get(id);
 
       if (existing) {
-        setCardsMap((previous) => {
-          const next = new Map(previous);
+        setCardsMap((prev) => {
+          const next = new Map(prev);
           next.delete(id);
 
           const siblings = Array.from(next.values())
@@ -250,11 +223,7 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
       }
 
       const result = await deleteCardAction(id);
-
-      if (!result.ok) {
-        setCardsMap(snapshot);
-      }
-
+      if (!result.ok) setCardsMap(snapshot);
       return result;
     },
     [cardsMap],
@@ -264,21 +233,19 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
     async (input: MoveCardInput) => {
       const snapshot = new Map(cardsMap);
 
-      setCardsMap((previous) =>
-        applyOptimisticMove(previous, input.id, input.status, input.position),
+      setCardsMap((prev) =>
+        applyOptimisticMove(prev, input.id, input.status, input.position),
       );
 
       const result = await moveCardAction(input);
-
       if (!result.ok) {
         setCardsMap(snapshot);
         return result;
       }
 
-      // Authoritative positions arrive via realtime; refresh map with returned row.
-      setCardsMap((previous) => {
+      setCardsMap((prev) => {
         const next = applyOptimisticMove(
-          previous,
+          prev,
           result.data.id,
           result.data.status,
           result.data.position,
@@ -292,13 +259,9 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
     [cardsMap],
   );
 
-  const getCard = useCallback(
-    (id: string) => cardsMap.get(id),
-    [cardsMap],
-  );
+  const getCard = useCallback((id: string) => cardsMap.get(id), [cardsMap]);
 
   return {
-    cards,
     cardsByStatus,
     connectionState,
     createCard,
@@ -306,13 +269,5 @@ export function useRealtimeBoard({ initialCards }: UseRealtimeBoardOptions) {
     deleteCard,
     moveCard,
     getCard,
-    refetch,
   };
 }
-
-export type RealtimeBoardApi = ReturnType<typeof useRealtimeBoard>;
-
-export type MoveTarget = {
-  status: CardStatus;
-  position: number;
-};

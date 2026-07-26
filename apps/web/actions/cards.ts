@@ -139,7 +139,7 @@ export async function deleteCard(
       return failure(deleteError.message);
     }
 
-    // Compact remaining positions in the column.
+    // keep positions contiguous after delete
     const { data: siblings, error: siblingsError } = await supabase
       .from("cards")
       .select("*")

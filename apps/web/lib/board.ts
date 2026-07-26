@@ -2,16 +2,12 @@ import type { CardRow, CardStatus } from "@/types/database";
 import type { CardsByStatus } from "@/types/board";
 import { BOARD_COLUMNS } from "@/types/board";
 
-export function emptyCardsByStatus(): CardsByStatus {
-  return {
+export function groupCardsByStatus(cards: CardRow[]): CardsByStatus {
+  const grouped: CardsByStatus = {
     todo: [],
     "in-progress": [],
     done: [],
   };
-}
-
-export function groupCardsByStatus(cards: CardRow[]): CardsByStatus {
-  const grouped = emptyCardsByStatus();
 
   for (const card of cards) {
     grouped[card.status].push(card);
@@ -26,26 +22,13 @@ export function groupCardsByStatus(cards: CardRow[]): CardsByStatus {
 
 export function cardsFromMap(map: Map<string, CardRow>): CardRow[] {
   return Array.from(map.values()).sort((a, b) => {
-    if (a.status === b.status) {
-      return a.position - b.position;
-    }
+    if (a.status === b.status) return a.position - b.position;
     return a.status.localeCompare(b.status);
   });
 }
 
 export function cardsToMap(cards: CardRow[]): Map<string, CardRow> {
   return new Map(cards.map((card) => [card.id, card]));
-}
-
-export function getNextPosition(
-  cards: CardRow[],
-  status: CardStatus,
-): number {
-  const columnCards = cards.filter((card) => card.status === status);
-  if (columnCards.length === 0) {
-    return 0;
-  }
-  return Math.max(...columnCards.map((card) => card.position)) + 1;
 }
 
 export function applyOptimisticMove(
@@ -55,9 +38,7 @@ export function applyOptimisticMove(
   toPosition: number,
 ): Map<string, CardRow> {
   const source = cards.get(cardId);
-  if (!source) {
-    return cards;
-  }
+  if (!source) return cards;
 
   const next = new Map(cards);
   const fromStatus = source.status;
@@ -67,13 +48,9 @@ export function applyOptimisticMove(
       .filter((card) => card.status === toStatus && card.id !== cardId)
       .sort((a, b) => a.position - b.position);
 
-    const clamped = Math.max(0, Math.min(toPosition, column.length));
-    column.splice(clamped, 0, { ...source, status: toStatus, position: clamped });
-
-    column.forEach((card, index) => {
-      next.set(card.id, { ...card, position: index });
-    });
-
+    const index = Math.max(0, Math.min(toPosition, column.length));
+    column.splice(index, 0, { ...source, status: toStatus, position: index });
+    column.forEach((card, i) => next.set(card.id, { ...card, position: i }));
     return next;
   }
 
@@ -81,28 +58,23 @@ export function applyOptimisticMove(
     .filter((card) => card.status === fromStatus && card.id !== cardId)
     .sort((a, b) => a.position - b.position);
 
-  sourceColumn.forEach((card, index) => {
-    next.set(card.id, { ...card, position: index });
-  });
+  sourceColumn.forEach((card, i) => next.set(card.id, { ...card, position: i }));
 
   const destination = Array.from(next.values())
     .filter((card) => card.status === toStatus && card.id !== cardId)
     .sort((a, b) => a.position - b.position);
 
-  const clamped = Math.max(0, Math.min(toPosition, destination.length));
-  destination.splice(clamped, 0, {
+  const index = Math.max(0, Math.min(toPosition, destination.length));
+  destination.splice(index, 0, {
     ...source,
     status: toStatus,
-    position: clamped,
+    position: index,
   });
-
-  destination.forEach((card, index) => {
-    next.set(card.id, { ...card, position: index });
-  });
+  destination.forEach((card, i) => next.set(card.id, { ...card, position: i }));
 
   return next;
 }
 
 export function columnTitle(status: CardStatus): string {
-  return BOARD_COLUMNS.find((column) => column.id === status)?.title ?? status;
+  return BOARD_COLUMNS.find((c) => c.id === status)?.title ?? status;
 }

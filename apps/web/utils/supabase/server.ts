@@ -14,12 +14,11 @@ export async function createClient(): Promise<TypedSupabaseClient> {
       },
       setAll(cookiesToSet) {
         try {
-          cookiesToSet.forEach(({ name, value, options }) => {
+          for (const { name, value, options } of cookiesToSet) {
             cookieStore.set(name, value, options);
-          });
+          }
         } catch {
-          // Called from a Server Component — safe to ignore when middleware
-          // already refreshes the session.
+          // ignore when called from a Server Component
         }
       },
     },

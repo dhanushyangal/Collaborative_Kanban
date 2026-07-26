@@ -28,6 +28,7 @@ pnpm-debug.log*
 Thumbs.db
 .idea
 .vscode
+.history
 *.swp
 *.swo
 
@@ -38,5 +39,5 @@ next-env.d.ts
 # Vercel
 .vercel
 
-# Testing / coverage
+# Coverage
 coverage
